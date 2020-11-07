@@ -1,0 +1,42 @@
+#!/bin/zsh
+
+screen="$(ioreg -c AppleBacklightDisplay | grep dsyp | sed 's/.*\("dsyp"={[^{}]*}\).*/\1/;s/.*"value"=\([0-9]*\).*/\1/')"
+if [ "$screen" -eq "0" ]; then exit; fi
+
+tmp="/tmp/battery-warning"
+touch "$tmp"
+last="$(cat $tmp)"
+
+charge="$(pmset -g batt | tr -d '\n' | sed -E 's/.*[^0-9]([0-9]+)%.*/\1/')"
+plug="$(pmset -g batt | tr -d '\n' | sed 's/.*%;[^A-Za-z]\(.*\);.*/\1/')"
+
+icon="Macintosh SSD:System:Library:CoreServices:CoreTypes.bundle:Contents:Resources:AlertStopIcon.icns"
+
+function notice {
+	osascript -e "tell app \"System Events\" to display dialog \"$1\n\nBattery's charge is currently at $charge%.\" buttons {\"OK\"} default button \"OK\" with icon file \"$icon\" with title \"Battery Warning\""
+}
+
+function state {
+	if [ "$last" != "$1" ]; then
+		echo "$1" > "$tmp"
+	fi
+	return $([ "$last" = "$1" ])
+}
+
+function plug {
+	return $([ "$plug" = "$1" ])
+}
+
+if [ "$1" = "debug" ]; then
+	notice "DEBUG."
+elif [ "$charge" -eq "100" ] && plug "charged"; then
+	if ! state "full"; then
+		notice "Battery is full. Please disconnect charger from laptop."
+	fi
+elif [ "$charge" -le "40" ] && plug "discharging"; then
+	if ! state "critical"; then
+		notice "Battery is critically low. Please connect charger to laptop."
+	fi
+else
+	state "$plug"
+fi
